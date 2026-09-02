@@ -1,0 +1,76 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── DENY ALL by default ───────────────────────────────────────────────
+    // This is the security baseline. Every rule below is an explicit exception.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ─── User document ────────────────────────────────────────────────────
+    // Users can read/write their own top-level user document.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      // ─── Conversations ─────────────────────────────────────────────────
+      match /conversations/{conversationId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        // Allow creating conversations owned by the authenticated user
+        allow create: if request.auth != null
+          && request.auth.uid == uid
+          && request.resource.data.uid == request.auth.uid;
+        // Allow updating own conversations
+        allow update: if request.auth != null && request.auth.uid == uid;
+        // Prevent deletion of conversations (preserve journal history)
+        allow delete: if false;
+
+        // ─── Messages ────────────────────────────────────────────────────
+        match /messages/{messageId} {
+          allow read: if request.auth != null && request.auth.uid == uid;
+          // Allow creating messages in own conversations
+          allow create: if request.auth != null
+            && request.auth.uid == uid
+            && request.resource.data.uid == request.auth.uid;
+          // Messages are immutable once created
+          allow update, delete: if false;
+        }
+      }
+
+      // ─── Journal Entries ───────────────────────────────────────────────
+      match /journalEntries/{entryId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+
+        // Allow creating journal entries owned by the authenticated user
+        allow create: if request.auth != null
+          && request.auth.uid == uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.status == 'draft';
+
+        // Allow updating DRAFT entries only — finalized entries are immutable
+        allow update: if request.auth != null
+          && request.auth.uid == uid
+          && resource.data.status == 'draft'
+          // Client CANNOT change uid or status (backend controls finalization)
+          && request.resource.data.uid == uid
+          && request.resource.data.status == 'draft';
+
+        // Prevent deletion of all journal entries
+        allow delete: if false;
+      }
+
+      // ─── Integrity Ledger ─────────────────────────────────────────────
+      // SECURITY: The integrity ledger is READ-ONLY for clients.
+      // Only the backend (Firebase Admin SDK bypasses these rules) can write.
+      // This prevents clients from tampering with the hash chain.
+      match /integrityLedger/{entryId} {
+        // Users can read their own integrity ledger
+        allow read: if request.auth != null && request.auth.uid == uid;
+        // CLIENTS CANNOT write to the integrity ledger
+        // Writing is done by the backend via Admin SDK (which bypasses rules)
+        allow write: if false;
+      }
+    }
+  }
+}
