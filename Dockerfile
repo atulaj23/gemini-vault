@@ -19,6 +19,30 @@ RUN npm install
 COPY backend ./backend
 COPY frontend ./frontend
 
+# -------------------------------------------------
+# Firebase public config
+# Render automatically provides these as build args
+# -------------------------------------------------
+ARG VITE_FIREBASE_API_KEY
+ARG VITE_FIREBASE_AUTH_DOMAIN
+ARG VITE_FIREBASE_PROJECT_ID
+ARG VITE_FIREBASE_STORAGE_BUCKET
+ARG VITE_FIREBASE_MESSAGING_SENDER_ID
+ARG VITE_FIREBASE_APP_ID
+
+# Make Firebase variables available to Vite
+ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY
+ENV VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN
+ENV VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID
+ENV VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET
+ENV VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID
+ENV VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
+
+# Safe diagnostic — NEVER print API key
+RUN echo "Firebase Project ID: ${VITE_FIREBASE_PROJECT_ID}" && \
+    echo "Firebase Auth Domain: ${VITE_FIREBASE_AUTH_DOMAIN}" && \
+    echo "Firebase App ID: ${VITE_FIREBASE_APP_ID}"
+
 # Build backend + frontend
 RUN npm run build
 
