@@ -34,7 +34,7 @@ export function createApp(): express.Application {
   // ─── Security headers ─────────────────────────────────────────────────────
   //
   // Firebase Google Sign-In requires Google's authentication scripts,
-  // frames and network endpoints. These are explicitly allowed below.
+  // frames and network endpoints.
   //
   app.use(
     helmet({
@@ -50,7 +50,7 @@ export function createApp(): express.Application {
             'https://www.gstatic.com',
           ],
 
-          // React/Vite styles + Firebase/Google UI requirements
+          // React/Vite styles + Google Fonts
           styleSrc: [
             "'self'",
             "'unsafe-inline'",
@@ -103,6 +103,13 @@ export function createApp(): express.Application {
             'https://accounts.google.com',
           ],
         },
+      },
+
+      // IMPORTANT:
+      // Google OAuth popup needs to communicate with the
+      // original application window.
+      crossOriginOpenerPolicy: {
+        policy: 'same-origin-allow-popups',
       },
 
       // Firebase authentication can use cross-origin resources.
