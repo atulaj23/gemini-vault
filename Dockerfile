@@ -1,51 +1,54 @@
-# ─── Stage 1: Build ───────────────────────────────────────────────────────────
+# =========================
+# Build Stage
+# =========================
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files for dependency install
-COPY backend/package*.json ./
+# Root workspace files
+COPY package*.json ./
 
-# Install all deps (including dev for build)
-RUN npm ci
+# Install dependencies
+RUN npm install
 
 # Copy source
-COPY backend/tsconfig.json ./
-COPY backend/src ./src
+COPY backend ./backend
+COPY frontend ./frontend
 
-# Build TypeScript
+# Build backend + frontend
 RUN npm run build
 
-# Prune dev dependencies
-RUN npm prune --production
-
-# ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
+# =========================
+# Runtime Stage
+# =========================
 FROM node:20-alpine AS runtime
-
-# Security: run as non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 appuser
 
 WORKDIR /app
 
-# Copy production artifacts
-COPY --from=builder --chown=appuser:nodejs /app/dist ./dist
-COPY --from=builder --chown=appuser:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=appuser:nodejs /app/package.json ./
+ENV NODE_ENV=production
+ENV PORT=8080
 
-# Switch to non-root user
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 appuser
+
+# Root workspace files
+COPY package*.json ./
+
+# Install production dependencies
+RUN npm install --omit=dev
+
+# Backend build
+COPY --from=builder /app/backend/dist ./backend/dist
+
+# Frontend build
+COPY --from=builder /app/frontend/dist ./frontend-dist
+
+# Backend package if needed at runtime
+COPY --from=builder /app/backend/package.json ./backend/package.json
+
 USER appuser
 
-# Cloud Run provides PORT — default 8080
-ENV PORT=8080
-ENV NODE_ENV=production
-
-# Expose port
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://localhost:${PORT}/api/health || exit 1
-
-# Start server
-CMD ["node", "dist/index.js"]
+CMD ["node", "backend/dist/server.js"]
