@@ -7,6 +7,7 @@
  */
 
 import express from 'express';
+import path from 'path';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -26,45 +27,71 @@ import integrityRouter from './routes/integrity';
 export function createApp(): express.Application {
   const app = express();
 
-  // ─── Trust proxy (Cloud Run sits behind Google's LB) ──────────────────────
+  // ─── Trust proxy ──────────────────────────────────────────────────────────
+  // Render / Cloud Run sits behind a reverse proxy/load balancer.
   app.set('trust proxy', 1);
 
   // ─── Security headers ─────────────────────────────────────────────────────
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:'],
-        connectSrc: ["'self'"],
-        fontSrc: ["'self'"],
-        objectSrc: ["'none'"],
-        frameSrc: ["'none'"],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
       },
-    },
-    crossOriginEmbedderPolicy: false,
-  }));
+      crossOriginEmbedderPolicy: false,
+    })
+  );
 
   // ─── CORS ─────────────────────────────────────────────────────────────────
-  app.use(cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, server-to-server)
-      if (!origin) return callback(null, true);
-      if (config.allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS: origin '${origin}' not allowed`));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    maxAge: 86400,
-  }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin:
+        // curl, mobile apps, server-to-server requests, etc.
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        if (config.allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+
+        callback(new Error(`CORS: origin '${origin}' not allowed`));
+      },
+
+      credentials: true,
+
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+
+      allowedHeaders: ['Content-Type', 'Authorization'],
+
+      maxAge: 86400,
+    })
+  );
 
   // ─── Body parsing ─────────────────────────────────────────────────────────
-  app.use(express.json({ limit: '50kb' }));
-  app.use(express.urlencoded({ extended: false, limit: '50kb' }));
+  app.use(
+    express.json({
+      limit: '50kb',
+    })
+  );
+
+  app.use(
+    express.urlencoded({
+      extended: false,
+      limit: '50kb',
+    })
+  );
 
   // ─── Request ID + Logging ─────────────────────────────────────────────────
   app.use(requestId);
@@ -73,27 +100,81 @@ export function createApp(): express.Application {
   // ─── Global Rate Limiting ─────────────────────────────────────────────────
   const globalLimiter = rateLimit({
     windowMs: config.rateLimitWindowMs,
+
     max: config.rateLimitMax,
+
     standardHeaders: true,
+
     legacyHeaders: false,
-    message: { error: 'Too many requests. Please try again later.' },
+
+    message: {
+      error: 'Too many requests. Please try again later.',
+    },
+
+    // Health endpoint should not consume normal API rate-limit quota.
     skip: (req) => req.path === '/api/health',
   });
+
   app.use(globalLimiter);
 
-  // ─── Routes ───────────────────────────────────────────────────────────────
+  // ─── API Routes ───────────────────────────────────────────────────────────
   app.use('/api/health', healthRouter);
+
   app.use('/api/auth', authRouter);
+
   app.use('/api/conversations', conversationsRouter);
+
   app.use('/api/journal', journalRouter);
+
   app.use('/api/integrity', integrityRouter);
+
+  // ─── Production Frontend ──────────────────────────────────────────────────
+  //
+  // In production, the Dockerfile copies:
+  //
+  // frontend/dist → /app/frontend-dist
+  //
+  // Express serves that React/Vite build from here.
+  //
+  // This allows the same Render service to serve:
+  //
+  // /              → React frontend
+  // /login         → React frontend
+  // /journal       → React frontend
+  // /api/*         → Express backend
+  //
+  if (config.isProduction) {
+    const frontendPath = path.join(process.cwd(), 'frontend-dist');
+
+    // Serve static frontend assets.
+    app.use(express.static(frontendPath));
+
+    // SPA fallback.
+    //
+    // React Router routes such as:
+    // /login
+    // /journal
+    // /integrity
+    //
+    // must return index.html so the React application
+    // can handle the route on the client side.
+    app.get('*', (req, res, next) => {
+      // Never send API requests to the React frontend.
+      if (req.path.startsWith('/api')) {
+        return next();
+      }
+
+      res.sendFile(path.join(frontendPath, 'index.html'));
+    });
+  }
 
   // ─── 404 + Error handlers ─────────────────────────────────────────────────
   app.use(notFound);
+
   app.use(errorHandler);
 
   return app;
 }
 
-// Export type for use in tests
+// ─── Export type for tests ───────────────────────────────────────────────────
 export type App = ReturnType<typeof createApp>;
