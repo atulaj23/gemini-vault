@@ -1,25 +1,30 @@
 # =========================
-# Build Stage
+# BUILD STAGE
 # =========================
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Root workspace files
-COPY package*.json ./
+COPY package.json package-lock.json ./
 
-# Install dependencies
+# Workspace package files
+COPY backend/package.json ./backend/package.json
+COPY frontend/package.json ./frontend/package.json
+
+# Install all dependencies, including devDependencies
 RUN npm install
 
-# Copy source
+# Copy source code
 COPY backend ./backend
 COPY frontend ./frontend
 
 # Build backend + frontend
 RUN npm run build
 
+
 # =========================
-# Runtime Stage
+# RUNTIME STAGE
 # =========================
 FROM node:20-alpine AS runtime
 
@@ -28,27 +33,29 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Create non-root user
+# Non-root user
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 appuser
 
-# Root workspace files
-COPY package*.json ./
+# Root package files
+COPY package.json package-lock.json ./
 
-# Install production dependencies
+# Workspace package files
+COPY backend/package.json ./backend/package.json
+COPY frontend/package.json ./frontend/package.json
+
+# Production dependencies only
 RUN npm install --omit=dev
 
-# Backend build
+# Backend compiled output
 COPY --from=builder /app/backend/dist ./backend/dist
 
-# Frontend build
+# Frontend compiled output
 COPY --from=builder /app/frontend/dist ./frontend-dist
 
-# Backend package if needed at runtime
-COPY --from=builder /app/backend/package.json ./backend/package.json
-
+# Run as non-root
 USER appuser
 
 EXPOSE 8080
 
-CMD ["node", "backend/dist/server.js"]
+CMD ["node", "backend/dist/index.js"]
