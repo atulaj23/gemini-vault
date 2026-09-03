@@ -3,8 +3,9 @@
  *
  * All environment variable access is centralised here.
  * Never access process.env directly elsewhere — import config instead.
- * This makes it easy to validate, mock in tests, and document.
  */
+
+import 'dotenv/config';
 
 function optionalEnv(name: string, fallback: string): string {
   return process.env[name] ?? fallback;
@@ -20,24 +21,33 @@ export const config = {
   // Gemini
   geminiApiKey: optionalEnv('GEMINI_API_KEY', ''),
   geminiSecretName: optionalEnv('GEMINI_SECRET_NAME', 'gemini-api-key'),
-  geminiModel: optionalEnv('GEMINI_MODEL', 'gemini-2.0-flash'),
+  geminiModel: optionalEnv('GEMINI_MODEL', 'gemini-3.6-flash'),
 
   // Google Cloud
   googleCloudProject: optionalEnv('GOOGLE_CLOUD_PROJECT', ''),
 
   // CORS
   frontendUrl: optionalEnv('FRONTEND_URL', 'http://localhost:5173'),
+
   get allowedOrigins(): string[] {
     const origins = [this.frontendUrl];
-    // Also allow production Cloud Run URL if set
+
     const prodUrl = process.env.PRODUCTION_URL;
     if (prodUrl) origins.push(prodUrl);
+
     return origins.filter(Boolean);
   },
 
   // Rate limiting
-  rateLimitWindowMs: parseInt(optionalEnv('RATE_LIMIT_WINDOW_MS', '900000'), 10),
-  rateLimitMax: parseInt(optionalEnv('RATE_LIMIT_MAX_REQUESTS', '100'), 10),
+  rateLimitWindowMs: parseInt(
+    optionalEnv('RATE_LIMIT_WINDOW_MS', '900000'),
+    10
+  ),
+
+  rateLimitMax: parseInt(
+    optionalEnv('RATE_LIMIT_MAX_REQUESTS', '100'),
+    10
+  ),
 
   // Journal limits
   maxJournalContentLength: 50_000,

@@ -52,3 +52,7 @@ serviceAccountKey.json
 
 # Misc
 *.pid
+
+# Local Google/Firebase credentials
+backend/service-account.json
+backend/server.err
