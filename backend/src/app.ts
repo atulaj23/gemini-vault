@@ -32,22 +32,80 @@ export function createApp(): express.Application {
   app.set('trust proxy', 1);
 
   // ─── Security headers ─────────────────────────────────────────────────────
+  //
+  // Firebase Google Sign-In requires Google's authentication scripts,
+  // frames and network endpoints. These are explicitly allowed below.
+  //
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
+          // Default fallback
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", 'data:'],
-          connectSrc: ["'self'"],
-          fontSrc: ["'self'"],
+
+          // Firebase / Google authentication scripts
+          scriptSrc: [
+            "'self'",
+            'https://apis.google.com',
+            'https://www.gstatic.com',
+          ],
+
+          // React/Vite styles + Firebase/Google UI requirements
+          styleSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            'https://fonts.googleapis.com',
+          ],
+
+          // Images, Firebase/Google assets and data URLs
+          imgSrc: [
+            "'self'",
+            'data:',
+            'blob:',
+            'https:',
+          ],
+
+          // Firebase + Google authentication network requests
+          connectSrc: [
+            "'self'",
+            'https://*.googleapis.com',
+            'https://*.firebaseio.com',
+            'https://*.firebaseapp.com',
+            'https://*.firebasedatabase.app',
+            'https://securetoken.googleapis.com',
+            'https://identitytoolkit.googleapis.com',
+            'https://accounts.google.com',
+          ],
+
+          // Fonts
+          fontSrc: [
+            "'self'",
+            'https://fonts.gstatic.com',
+            'data:',
+          ],
+
+          // Prevent plugins such as Flash/PDF plugins
           objectSrc: ["'none'"],
-          frameSrc: ["'none'"],
+
+          // Firebase Google Sign-In popup/iframe
+          frameSrc: [
+            "'self'",
+            'https://*.firebaseapp.com',
+            'https://accounts.google.com',
+          ],
+
+          // Restrict base URL manipulation
           baseUri: ["'self'"],
-          formAction: ["'self'"],
+
+          // Restrict form submissions
+          formAction: [
+            "'self'",
+            'https://accounts.google.com',
+          ],
         },
       },
+
+      // Firebase authentication can use cross-origin resources.
       crossOriginEmbedderPolicy: false,
     })
   );
@@ -66,14 +124,25 @@ export function createApp(): express.Application {
           return callback(null, true);
         }
 
-        callback(new Error(`CORS: origin '${origin}' not allowed`));
+        callback(
+          new Error(`CORS: origin '${origin}' not allowed`)
+        );
       },
 
       credentials: true,
 
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      methods: [
+        'GET',
+        'POST',
+        'PUT',
+        'DELETE',
+        'OPTIONS',
+      ],
 
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+      ],
 
       maxAge: 86400,
     })
@@ -141,10 +210,14 @@ export function createApp(): express.Application {
   // /              → React frontend
   // /login         → React frontend
   // /journal       → React frontend
+  // /integrity     → React frontend
   // /api/*         → Express backend
   //
   if (config.isProduction) {
-    const frontendPath = path.join(process.cwd(), 'frontend-dist');
+    const frontendPath = path.join(
+      process.cwd(),
+      'frontend-dist'
+    );
 
     // Serve static frontend assets.
     app.use(express.static(frontendPath));
@@ -164,7 +237,9 @@ export function createApp(): express.Application {
         return next();
       }
 
-      res.sendFile(path.join(frontendPath, 'index.html'));
+      res.sendFile(
+        path.join(frontendPath, 'index.html')
+      );
     });
   }
 
